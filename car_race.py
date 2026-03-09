@@ -10,18 +10,20 @@ pygame.init()
 # ------------------
 WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Racing Game with Countdown")
+pygame.display.set_caption("Arcade Racing Game with Smart AI and Trees")
 clock = pygame.time.Clock()
 
 # ------------------
 # Colors
 # ------------------
 GREEN = (34, 177, 76)
+DARK_GREEN = (20, 120, 20)
 GRAY = (120, 120, 120)
 WHITE = (255, 255, 255)
 BLUE = (0, 100, 255)
 RED = (200, 0, 0)
 BLACK = (20, 20, 20)
+BROWN = (120, 80, 20)
 
 # ------------------
 # Track
@@ -61,12 +63,19 @@ def draw_car(color):
     return car_surface
 
 # ------------------
+# Draw Tree Function
+# ------------------
+def draw_tree(surface, x, y):
+    pygame.draw.rect(surface, (139, 69, 19), (x - 5, y, 10, 20))  # Trunk
+    pygame.draw.circle(surface, (0, 155, 0), (x, y), 15)  # Leaves
+
+# ------------------
 # Reset Function
 # ------------------
 def reset_game():
     global player_x, player_y, player_speed, player_angle, player_progress
     global ai_x, ai_y, ai_progress
-    global obstacles, game_over, winner
+    global obstacles, trees, game_over, winner
     global countdown_time, race_started, countdown_start_ticks
 
     player_x = WIDTH // 2
@@ -82,23 +91,30 @@ def reset_game():
     obstacles = []
     game_over = False
     winner = ""
-
     race_started = False
     countdown_start_ticks = pygame.time.get_ticks()
     countdown_time = 3
+
+    # Initialize Trees
+    global trees
+    trees = []
+    for i in range(50):
+        side = random.choice(["left", "right"])
+        x = random.randint(50, road_x - 30) if side == "left" else random.randint(road_x + road_width + 30, WIDTH - 50)
+        y = random.randint(-6000, HEIGHT)
+        trees.append([x, y])
 
 # ------------------
 # Initialize Variables
 # ------------------
 reset_game()
 player_acceleration = 0.25
-player_max_speed = 8
+player_max_speed = 9
 player_friction = 0.05
 turn_speed = 3
 grip = 0.92
 
-ai_speed = 4
-
+ai_speed = 3
 race_distance = 6000
 obstacle_width = 40
 obstacle_height = 40
@@ -108,10 +124,15 @@ obstacle_speed = 6
 # Game Loop
 # ------------------
 running = True
-
 while running:
     clock.tick(60)
-    screen.fill(GREEN)
+    screen.fill(DARK_GREEN)  # Grass background
+
+    # Draw side grass
+    pygame.draw.rect(screen, GREEN, (0, 0, road_x, HEIGHT))
+    pygame.draw.rect(screen, GREEN, (road_x + road_width, 0, WIDTH - road_x - road_width, HEIGHT))
+    # Draw road
+    pygame.draw.rect(screen, GRAY, (road_x, 0, road_width, HEIGHT))
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -119,12 +140,11 @@ while running:
 
     keys = pygame.key.get_pressed()
 
-    # ------------------
     # Countdown
-    # ------------------
     if not race_started:
         elapsed = (pygame.time.get_ticks() - countdown_start_ticks) / 1000
         seconds_left = countdown_time - int(elapsed)
+
         if seconds_left > 0:
             text_str = "READY" if seconds_left == 3 else "SET" if seconds_left == 2 else "GO!"
             countdown_text = big_font.render(text_str, True, RED)
@@ -132,57 +152,54 @@ while running:
         else:
             race_started = True
     else:
-        # ------------------
-        # Player Movement
-        # ------------------
-        if not game_over:
+        if not game_over or player_progress < race_distance:
+            # ------------------
+            # Player Movement
+            # ------------------
             if keys[pygame.K_UP]:
                 player_speed += player_acceleration
             if keys[pygame.K_DOWN]:
                 player_speed -= player_acceleration
 
-            # Speed limits
-            if player_speed > player_max_speed:
-                player_speed = player_max_speed
-            if player_speed < -player_max_speed / 2:
-                player_speed = -player_max_speed / 2
+            player_speed = max(-player_max_speed/2, min(player_speed, player_max_speed))
 
-            # Turning
             if player_speed != 0:
                 if keys[pygame.K_LEFT]:
                     player_angle += turn_speed
                 if keys[pygame.K_RIGHT]:
                     player_angle -= turn_speed
 
-            # Friction
-            if player_speed > 0:
-                player_speed -= player_friction
-            elif player_speed < 0:
-                player_speed += player_friction
+            player_speed *= (1 - player_friction)
             if abs(player_speed) < 0.05:
                 player_speed = 0
 
-            # Horizontal movement
-            velocity_x = player_speed * math.sin(math.radians(player_angle)) * grip
-            player_x += velocity_x
-            if player_x < road_x:
-                player_x = road_x
-            if player_x > road_x + road_width:
-                player_x = road_x + road_width
-
-            # Update progress
+            player_x += player_speed * math.sin(math.radians(player_angle)) * grip
+            player_x = max(road_x, min(player_x, road_x + road_width))
             player_progress += player_speed
 
             # ------------------
-            # AI Movement
+            # AI Movement with Obstacle Dodging
             # ------------------
-            ai_y += ai_speed - player_speed
-            road_center = road_x + road_width // 2
-            if ai_x < road_center:
-                ai_x += 1
-            elif ai_x > road_center:
-                ai_x -= 1
-            ai_progress += ai_speed
+            if ai_progress < race_distance:  # only move AI if not finished/crashed
+                ai_y = 300
+                road_center = road_x + road_width // 2
+                # AI detects obstacles
+                for obstacle in obstacles:
+                    obs_rect = pygame.Rect(obstacle[0], obstacle[1], obstacle_width, obstacle_height)
+                    ai_rect_future = pygame.Rect(ai_x - 20, ai_y - 35, 40, 70)
+                    if obs_rect.top > ai_y - 35 and obs_rect.top < ai_y + 150:
+                        if ai_rect_future.colliderect(obs_rect):
+                            if ai_x < road_x + road_width - 40:
+                                ai_x += 2
+                            elif ai_x > road_x + 40:
+                                ai_x -= 2
+                # Move toward center when path clear
+                if ai_x < road_center:
+                    ai_x += 0.5
+                elif ai_x > road_center:
+                    ai_x -= 0.5
+                # AI progress
+                ai_progress += ai_speed + random.uniform(-0.5, 0.3)
 
             # ------------------
             # Obstacles
@@ -192,9 +209,15 @@ while running:
                 obstacles.append([obstacle_x, -50])
 
             for obstacle in obstacles:
-                obstacle[1] += obstacle_speed - player_speed
+                obstacle[1] += obstacle_speed
 
             obstacles = [obs for obs in obstacles if obs[1] < HEIGHT + 100]
+
+            # ------------------
+            # Move Trees
+            # ------------------
+            for tree in trees:
+                tree[1] += -player_speed
 
             # ------------------
             # Collisions
@@ -204,39 +227,46 @@ while running:
 
             for obstacle in obstacles:
                 obstacle_rect = pygame.Rect(obstacle[0], obstacle[1], obstacle_width, obstacle_height)
+                # Player collision
                 if player_rect.colliderect(obstacle_rect) and not game_over:
                     create_explosion(screen, player_x, player_y)
                     game_over = True
                     winner = "YOU CRASHED!"
-                if ai_rect.colliderect(obstacle_rect) and not game_over:
+                # AI collision
+                if ai_rect.colliderect(obstacle_rect):
                     create_explosion(screen, ai_x, ai_y)
-                    game_over = True
-                    winner = "AI CRASHED!"
+                    ai_progress = race_distance + 1  # mark AI as crashed
 
-            if player_rect.colliderect(ai_rect) and not game_over:
+            # Player-AI collision
+            if player_rect.colliderect(ai_rect):
                 create_explosion(screen, (player_x + ai_x)/2, (player_y + ai_y)/2)
-                game_over = True
-                winner = "CRASH!"
+                ai_progress = race_distance + 1
 
             # Finish line check
             if player_progress >= race_distance and not game_over:
                 game_over = True
-                winner = "YOU FINISHED!"
-            elif ai_progress >= race_distance and not game_over:
+                winner = "YOU WON!"
+            elif ai_progress >= race_distance and player_progress < race_distance and not game_over:
+                # AI finishes first but player still drives
+                winner = "AI WON!"
                 game_over = True
-                winner = "AI FINISHED!"
 
     # ------------------
-    # Draw Road
+    # Draw Trees
     # ------------------
-    pygame.draw.rect(screen, GRAY, (road_x, 0, road_width, HEIGHT))
+    for tree in trees:
+        draw_tree(screen, tree[0], tree[1])
+
+    # ------------------
+    # Draw Lane Stripes
+    # ------------------
     for i in range(0, HEIGHT, 40):
         pygame.draw.line(screen, WHITE,
                          (WIDTH//2, i + int(player_progress) % 40),
                          (WIDTH//2, i + 20 + int(player_progress) % 40), 5)
 
     # ------------------
-    # Draw Finish Line
+    # Finish Line
     # ------------------
     finish_line_y = -player_progress + race_distance
     if finish_line_y < HEIGHT:
@@ -258,35 +288,31 @@ while running:
     # ------------------
     rotated_player = pygame.transform.rotate(draw_car(BLUE), player_angle)
     screen.blit(rotated_player, rotated_player.get_rect(center=(player_x, player_y)).topleft)
-
-    rotated_ai = pygame.transform.rotate(draw_car(RED), 0)
-    screen.blit(rotated_ai, rotated_ai.get_rect(center=(ai_x, ai_y)).topleft)
+    if ai_progress < race_distance + 1:  # hide AI if crashed
+        rotated_ai = pygame.transform.rotate(draw_car(RED), 0)
+        screen.blit(rotated_ai, rotated_ai.get_rect(center=(ai_x, ai_y)).topleft)
 
     # ------------------
     # Draw Obstacles
     # ------------------
     for obstacle in obstacles:
-        pygame.draw.rect(screen, BLACK, (obstacle[0], obstacle[1], obstacle_width, obstacle_height))
+        pygame.draw.rect(screen, BROWN, (obstacle[0], obstacle[1], obstacle_width, obstacle_height))
 
     # ------------------
     # UI
     # ------------------
     distance_left = max(0, int(race_distance - player_progress))
-    text = font.render(f"Distance Left: {distance_left}", True, BLACK)
-    screen.blit(text, (20, 20))
-    speed_text = font.render(f"Speed: {int(abs(player_speed)*20)} km/h", True, BLACK)
-    screen.blit(speed_text, (20, 60))
+    screen.blit(font.render(f"Distance Left: {distance_left}", True, BLACK), (20, 20))
+    screen.blit(font.render(f"Speed: {int(abs(player_speed)*20)} km/h", True, BLACK), (20, 60))
 
     # ------------------
-    # Game Over / Restart
+    # Game Over
     # ------------------
     if game_over:
         win_text = big_font.render(winner, True, BLACK)
         screen.blit(win_text, (WIDTH//2 - 150, HEIGHT//2))
-
         restart_text = font.render("Press SPACE to restart", True, BLACK)
         screen.blit(restart_text, (WIDTH//2 - 150, HEIGHT//2 + 80))
-
         if keys[pygame.K_SPACE]:
             reset_game()
 
@@ -294,5 +320,3 @@ while running:
 
 pygame.quit()
 sys.exit()
-
-       
