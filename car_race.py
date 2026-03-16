@@ -5,17 +5,14 @@ import math
 
 pygame.init()
 
-# ------------------
-# Window
-# ------------------
 WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Arcade Racing Game")
 clock = pygame.time.Clock()
 
-# ------------------
+level = 1
+
 # Colors
-# ------------------
 GREEN = (34,177,76)
 DARK_GREEN = (20,120,20)
 GRAY = (120,120,120)
@@ -25,18 +22,16 @@ RED = (200,0,0)
 BLACK = (20,20,20)
 BROWN = (120,80,20)
 YELLOW = (255,255,0)
+RAIN = (150,150,255)
 
-# ------------------
-# Track
-# ------------------
 road_x = 200
 road_width = 400
 
-# ------------------
-# Fonts
-# ------------------
 font = pygame.font.SysFont(None,40)
 big_font = pygame.font.SysFont(None,70)
+
+obstacle_width = 40
+obstacle_height = 40
 
 # ------------------
 # Explosion
@@ -50,13 +45,16 @@ def create_explosion(surface,x,y,max_radius=50,delay=15):
         pygame.time.delay(delay)
 
 # ------------------
-# Draw Car
+# Draw Car (RESTORED ORIGINAL)
 # ------------------
 def draw_car(color):
     car_surface = pygame.Surface((40,70), pygame.SRCALPHA)
     pygame.draw.rect(car_surface,color,(5,10,30,50),border_radius=8)
+    # front window
     pygame.draw.rect(car_surface,(200,220,255),(10,15,20,15),border_radius=4)
+    # back window
     pygame.draw.rect(car_surface,(200,220,255),(10,40,20,15),border_radius=4)
+    # wheels
     pygame.draw.rect(car_surface,BLACK,(0,15,5,15))
     pygame.draw.rect(car_surface,BLACK,(35,15,5,15))
     pygame.draw.rect(car_surface,BLACK,(0,40,5,15))
@@ -64,22 +62,30 @@ def draw_car(color):
     return car_surface
 
 # ------------------
-# Draw Tree
+# Draw Trees
 # ------------------
 def draw_tree(surface,x,y):
-    pygame.draw.rect(surface,(139,69,19),(x-5,y,10,20))
-    pygame.draw.circle(surface,(0,155,0),(x,y),15)
+    if level == 1:
+        pygame.draw.rect(surface,(139,69,19),(x-5,y,10,20))
+        pygame.draw.circle(surface,(0,155,0),(x,y),15)
+    else:
+        pygame.draw.rect(surface,(120,70,30),(x-6,y,12,25))
+        pygame.draw.circle(surface,(0,200,0),(x,y),18)
+        pygame.draw.circle(surface,(0,170,0),(x-10,y+5),15)
+        pygame.draw.circle(surface,(0,170,0),(x+10,y+5),15)
 
 # ------------------
 # Reset Game
 # ------------------
-def reset_game():
-
+def reset_game(new_level=1):
     global player_x,player_y,player_speed,player_angle,player_progress
-    global ai_x,ai_y,ai_progress,ai_crashed
-    global obstacles,boosts,boost_timer
+    global ai_x,ai_y,ai_progress
+    global obstacles,monkeys,snakes,rain
     global trees,game_over,winner
-    global countdown_time,race_started,countdown_start_ticks
+    global race_started,countdown_start_ticks,countdown_time
+    global level
+
+    level = new_level
 
     player_x = WIDTH//2
     player_y = 450
@@ -90,18 +96,21 @@ def reset_game():
     ai_x = WIDTH//2 + 80
     ai_y = 300
     ai_progress = 0
-    ai_crashed = False
 
     obstacles = []
-    boosts = []
-    boost_timer = 0
+    monkeys = []
+    snakes = []
 
-    game_over = False
-    winner = ""
+    rain=[]
+    for i in range(120):
+        rain.append([random.randint(0,WIDTH),random.randint(0,HEIGHT)])
 
-    race_started = False
-    countdown_start_ticks = pygame.time.get_ticks()
-    countdown_time = 3
+    game_over=False
+    winner=""
+
+    race_started=False
+    countdown_start_ticks=pygame.time.get_ticks()
+    countdown_time=3
 
     trees=[]
     for i in range(50):
@@ -110,9 +119,6 @@ def reset_game():
         y=random.randint(-6000,HEIGHT)
         trees.append([x,y])
 
-# ------------------
-# Initialize
-# ------------------
 reset_game()
 
 player_acceleration = 0.25
@@ -124,26 +130,21 @@ grip = 0.92
 ai_speed = 3
 race_distance = 6000
 
-obstacle_width = 40
-obstacle_height = 40
-obstacle_speed = 4
-
-boost_width = 30
-boost_height = 30
-boost_speed = 6
-
-# ------------------
-# Game Loop
-# ------------------
 running=True
 
 while running:
-
     clock.tick(60)
-    screen.fill(DARK_GREEN)
 
-    pygame.draw.rect(screen,GREEN,(0,0,road_x,HEIGHT))
-    pygame.draw.rect(screen,GREEN,(road_x+road_width,0,WIDTH-road_x-road_width,HEIGHT))
+    # BACKGROUND
+    if level == 1:
+        screen.fill(DARK_GREEN)
+        grass = GREEN
+    else:
+        screen.fill((10,80,10))
+        grass = (0,120,0)
+
+    pygame.draw.rect(screen,grass,(0,0,road_x,HEIGHT))
+    pygame.draw.rect(screen,grass,(road_x+road_width,0,WIDTH-road_x-road_width,HEIGHT))
     pygame.draw.rect(screen,GRAY,(road_x,0,road_width,HEIGHT))
 
     for event in pygame.event.get():
@@ -152,11 +153,17 @@ while running:
 
     keys = pygame.key.get_pressed()
 
-    # ------------------
-    # Countdown
-    # ------------------
-    if not race_started:
+    # RAIN LEVEL 2
+    if level == 2:
+        for drop in rain:
+            pygame.draw.line(screen,RAIN,(drop[0],drop[1]),(drop[0],drop[1]+8),1)
+            drop[1]+=10
+            if drop[1] > HEIGHT:
+                drop[1]=0
+                drop[0]=random.randint(0,WIDTH)
 
+    # COUNTDOWN
+    if not race_started:
         elapsed=(pygame.time.get_ticks()-countdown_start_ticks)/1000
         seconds_left=countdown_time-int(elapsed)
 
@@ -168,12 +175,8 @@ while running:
             race_started=True
 
     else:
-
         if not game_over:
-
-            # ------------------
-            # Player Movement
-            # ------------------
+            # PLAYER MOVEMENT
             if keys[pygame.K_UP]:
                 player_speed += player_acceleration
             if keys[pygame.K_DOWN]:
@@ -188,165 +191,116 @@ while running:
                     player_angle-=turn_speed
 
             player_speed *= (1-player_friction)
-
-            if abs(player_speed)<0.05:
-                player_speed=0
-
-            if boost_timer>0:
-                player_speed+=0.3
-                boost_timer-=1
-
             player_x += player_speed * math.sin(math.radians(player_angle)) * grip
             player_x=max(road_x,min(player_x,road_x+road_width))
             player_progress+=player_speed
 
-            # ------------------
-            # SUPER SMART AI
-            # ------------------
-            if ai_progress < race_distance and not ai_crashed:
+            # AI PROGRESS
+            ai_progress += ai_speed + random.uniform(-0.2,0.2)
 
-                ai_y = 300
-                road_center = road_x + road_width//2
-
-                ai_rect = pygame.Rect(ai_x-20, ai_y-35, 40,70)
-
-                for obstacle in obstacles:
-
-                    obs_rect = pygame.Rect(obstacle[0],obstacle[1],obstacle_width,obstacle_height)
-
-                    # look very far ahead
-                    if obs_rect.top > ai_y-60 and obs_rect.top < ai_y+250:
-
-                        if ai_rect.colliderect(obs_rect):
-
-                            if ai_x < road_center:
-                                ai_x -= 5
-                            else:
-                                ai_x += 5
-
-                if ai_x < road_x+30:
-                    ai_x += 4
-                if ai_x > road_x+road_width-30:
-                    ai_x -= 4
-
-                if ai_x < road_center:
-                    ai_x += 0.3
-                elif ai_x > road_center:
-                    ai_x -= 0.3
-
-                ai_progress += ai_speed + random.uniform(-0.2,0.2)
-
-            # ------------------
-            # Spawn Obstacles
-            # ------------------
-            if random.randint(1,60)==1:
-                obstacle_x=random.randint(road_x,road_x+road_width-obstacle_width)
-                obstacles.append([obstacle_x,-50])
-
-            # ------------------
-            # Spawn Boost
-            # ------------------
-            if random.randint(1,200)==1:
-                boost_x=random.randint(road_x,road_x+road_width-boost_width)
-                boosts.append([boost_x,-50])
-
-            for obstacle in obstacles:
-                obstacle[1]+=obstacle_speed
-
-            obstacles=[o for o in obstacles if o[1]<HEIGHT+100]
-
-            for boost in boosts:
-                boost[1]+=boost_speed
-
-            boosts=[b for b in boosts if b[1]<HEIGHT+100]
-
-            # ------------------
-            # Move Trees
-            # ------------------
-            for tree in trees:
-                tree[1]+=-player_speed
+            # LEVEL 1 OBSTACLES
+            if level == 1 and random.randint(1,60)==1:
+                obstacles.append([random.randint(road_x,road_x+road_width-obstacle_width),-50])
+            for o in obstacles:
+                o[1]+=5
 
             player_rect=pygame.Rect(player_x-20,player_y-35,40,70)
-            ai_rect=pygame.Rect(ai_x-20,ai_y-35,40,70)
-
-            # Player crash
-            for obstacle in obstacles:
-
-                obstacle_rect=pygame.Rect(obstacle[0],obstacle[1],obstacle_width,obstacle_height)
-
-                if player_rect.colliderect(obstacle_rect):
+            for o in obstacles:
+                rect=pygame.Rect(o[0],o[1],obstacle_width,obstacle_height)
+                if player_rect.colliderect(rect):
                     create_explosion(screen,player_x,player_y)
                     game_over=True
                     winner="YOU CRASHED!"
 
-            # Boost pickup
-            for boost in boosts[:]:
+            # LEVEL 2 MONKEYS & SNAKES
+            if level == 2 and random.randint(1,180)==1:
+                monkeys.append([road_x-40, random.randint(100,500), 4])
+            if level == 2 and random.randint(1,160)==1:
+                snakes.append([random.randint(road_x, road_x+road_width), -50, 50])
 
-                boost_rect=pygame.Rect(boost[0],boost[1],boost_width,boost_height)
+            # Draw monkeys with ears
+            for m in monkeys:
+                x, y, speed = m
+                # body
+                pygame.draw.rect(screen, (139,69,19), (x, y, 20, 15))
+                # head
+                pygame.draw.circle(screen, (160,82,45), (x+10, y-5), 7)
+                # ears
+                pygame.draw.circle(screen, (160,82,45), (x+4, y-5), 3)
+                pygame.draw.circle(screen, (160,82,45), (x+16, y-5), 3)
+                # tail
+                pygame.draw.line(screen, (139,69,19), (x+20, y+7), (x+30, y+5), 3)
+                # move
+                m[0] += speed
 
-                if player_rect.colliderect(boost_rect):
-                    boost_timer=120
-                    boosts.remove(boost)
+            # Draw snakes
+            for s in snakes:
+                x, y, length = s
+                for i in range(0, length, 5):
+                    pygame.draw.circle(screen, (0,150,0), (x + int(5*math.sin(i/5)), y+i), 3)
+                s[1] += 3
 
-            # Finish logic
-            if player_progress>=race_distance:
-                game_over=True
-                winner="YOU WON!"
+            # Collisions monkeys
+            for m in monkeys:
+                if player_rect.colliderect(pygame.Rect(m[0],m[1],20,15)):
+                    create_explosion(screen,player_x,player_y)
+                    game_over=True
+                    winner="YOU HIT A MONKEY!"
+            # Collisions snakes
+            for s in snakes:
+                if player_rect.colliderect(pygame.Rect(s[0],s[1],5, s[2])):
+                    create_explosion(screen,player_x,player_y)
+                    game_over=True
+                    winner="YOU HIT A SNAKE!"
 
-            elif ai_progress>=race_distance and not ai_crashed:
+            # WIN CONDITIONS
+            if player_progress >= race_distance:
+                if level == 1:
+                    reset_game(2)
+                else:
+                    game_over=True
+                    winner="YOU WON THE GAME!"
+            elif ai_progress >= race_distance:
                 game_over=True
                 winner="AI WON!"
 
-    # ------------------
-    # Draw Trees
-    # ------------------
+    # Draw trees
     for tree in trees:
         draw_tree(screen,tree[0],tree[1])
 
-    # ------------------
-    # Road Lines
-    # ------------------
-    for i in range(0,HEIGHT,40):
-        pygame.draw.line(screen,WHITE,
-            (WIDTH//2,i+int(player_progress)%40),
-            (WIDTH//2,i+20+int(player_progress)%40),5)
+    # ROAD LINES
+    for i in range(0, HEIGHT, 40):
+        pygame.draw.line(
+            screen,
+            WHITE,
+            (WIDTH//2, i + int(player_progress) % 40),
+            (WIDTH//2, i + 20 + int(player_progress) % 40),
+            5
+        )
 
-    # ------------------
-    # Draw Cars
-    # ------------------
+    # DRAW CARS
     rotated_player=pygame.transform.rotate(draw_car(BLUE),player_angle)
     screen.blit(rotated_player,rotated_player.get_rect(center=(player_x,player_y)).topleft)
-
     rotated_ai=pygame.transform.rotate(draw_car(RED),0)
     screen.blit(rotated_ai,rotated_ai.get_rect(center=(ai_x,ai_y)).topleft)
 
-    # Obstacles
-    for obstacle in obstacles:
-        pygame.draw.rect(screen,BROWN,(obstacle[0],obstacle[1],obstacle_width,obstacle_height))
-
-    # Boosts
-    for boost in boosts:
-        pygame.draw.circle(screen,YELLOW,(boost[0]+15,boost[1]+15),15)
+    # DRAW LEVEL 1 OBSTACLES
+    for o in obstacles:
+        pygame.draw.rect(screen,BROWN,(o[0],o[1],obstacle_width,obstacle_height))
 
     # UI
     distance_left=max(0,int(race_distance-player_progress))
     screen.blit(font.render(f"Distance Left: {distance_left}",True,BLACK),(20,20))
-    screen.blit(font.render(f"Speed: {int(abs(player_speed)*20)} km/h",True,BLACK),(20,60))
+    screen.blit(font.render(f"Level: {level}",True,BLACK),(20,60))
 
-    if boost_timer>0:
-        screen.blit(font.render("BOOST!",True,YELLOW),(20,100))
-
-    # Game Over
+    # Game over
     if game_over:
-
         win_text=big_font.render(winner,True,BLACK)
-        screen.blit(win_text,(WIDTH//2-150,HEIGHT//2))
-
+        screen.blit(win_text,(WIDTH//2-200,HEIGHT//2))
         restart_text=font.render("Press SPACE to restart",True,BLACK)
         screen.blit(restart_text,(WIDTH//2-150,HEIGHT//2+80))
-
         if keys[pygame.K_SPACE]:
-            reset_game()
+            reset_game(1)
 
     pygame.display.update()
 
