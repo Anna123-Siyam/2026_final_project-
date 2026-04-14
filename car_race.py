@@ -12,6 +12,8 @@ clock = pygame.time.Clock()
 
 # Game state
 game_state = "menu"
+transition_start_time = 0
+transition_duration = 2000  # 2 seconds
 
 level = 1
 
@@ -32,7 +34,6 @@ road_width = 400
 font = pygame.font.SysFont(None,40)
 big_font = pygame.font.SysFont(None,70)
 
-# Start button
 start_button = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 + 50, 200, 60)
 
 obstacle_width = 40
@@ -53,27 +54,62 @@ def draw_checkered_background(surface, square_size=40):
 def draw_menu():
     draw_checkered_background(screen)
     smaller_big_font = pygame.font.SysFont(None, 45)
-    banner_padding = 20
+
     title_text = "Welcome to Anna's Car Racing Game"
-    title = smaller_big_font.render(title_text, True, RED)
-    title_x = WIDTH//2 - title.get_width()//2
-    title_y = HEIGHT//2 - 100
     subtitle_text = "Click Start to begin the game"
+
+    title = smaller_big_font.render(title_text, True, RED)
     subtitle = font.render(subtitle_text, True, RED)
+
+    title_x = WIDTH//2 - title.get_width()//2
     subtitle_x = WIDTH//2 - subtitle.get_width()//2
-    subtitle_y = HEIGHT//2 - 40
-    banner_top = title_y - banner_padding
-    banner_bottom = subtitle_y + subtitle.get_height() + banner_padding
-    banner_left = min(title_x, subtitle_x) - banner_padding
-    banner_right = max(title_x + title.get_width(), subtitle_x + subtitle.get_width()) + banner_padding
-    pygame.draw.rect(screen, WHITE, (banner_left, banner_top, banner_right - banner_left, banner_bottom - banner_top), border_radius=10)
-    screen.blit(title, (title_x, title_y))
-    screen.blit(subtitle, (subtitle_x, subtitle_y))
+
+    banner_top = HEIGHT//2 - 120
+    banner_left = min(title_x, subtitle_x) - 20
+    banner_right = max(title_x + title.get_width(),
+                       subtitle_x + subtitle.get_width()) + 20
+    banner_bottom = HEIGHT//2 + 10
+
+    pygame.draw.rect(screen, WHITE,
+        (banner_left, banner_top, banner_right - banner_left, banner_bottom - banner_top),
+        border_radius=10)
+
+    pygame.draw.rect(screen, BLACK,
+        (banner_left, banner_top, banner_right - banner_left, banner_bottom - banner_top),
+        3, border_radius=10)
+
+    screen.blit(title, (title_x, HEIGHT//2 - 100))
+    screen.blit(subtitle, (subtitle_x, HEIGHT//2 - 50))
+
     pygame.draw.rect(screen, (200, 0, 0), start_button, border_radius=10)
     button_text = font.render("START", True, WHITE)
     screen.blit(button_text,
         (start_button.x + start_button.width//2 - button_text.get_width()//2,
          start_button.y + start_button.height//2 - button_text.get_height()//2))
+
+# --- TRANSITION SCREEN (FIXED) ---
+def draw_transition():
+    draw_checkered_background(screen)
+
+    text = big_font.render("Moving on to Level 2", True, RED)
+
+    text_x = WIDTH//2 - text.get_width()//2
+    text_y = HEIGHT//2 - text.get_height()//2
+
+    padding = 20
+
+    # ONLY white rectangle behind text
+    pygame.draw.rect(
+        screen,
+        WHITE,
+        (text_x - padding,
+         text_y - padding,
+         text.get_width() + padding * 2,
+         text.get_height() + padding * 2),
+        border_radius=10
+    )
+
+    screen.blit(text, (text_x, text_y))
 
 # --- GAME FUNCTIONS ---
 def create_explosion(surface,x,y,max_radius=50,delay=15):
@@ -151,9 +187,11 @@ running=True
 
 while running:
     clock.tick(60)
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running=False
+
         if game_state == "menu":
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if start_button.collidepoint(event.pos):
@@ -165,6 +203,19 @@ while running:
         pygame.display.update()
         continue
 
+    # --- TRANSITION STATE ---
+    if game_state == "transition":
+        draw_checkered_background(screen)
+        draw_transition()
+        pygame.display.update()
+
+        if pygame.time.get_ticks() - transition_start_time > transition_duration:
+            reset_game(2)
+            game_state = "game"
+
+        continue
+
+    # --- GAME ---
     if level == 1:
         screen.fill(DARK_GREEN)
         grass = GREEN
@@ -175,6 +226,7 @@ while running:
     pygame.draw.rect(screen,grass,(0,0,road_x,HEIGHT))
     pygame.draw.rect(screen,grass,(road_x+road_width,0,WIDTH-road_x-road_width,HEIGHT))
     pygame.draw.rect(screen,GRAY,(road_x,0,road_width,HEIGHT))
+
     keys = pygame.key.get_pressed()
 
     if level == 2:
@@ -214,10 +266,13 @@ while running:
             player_x=max(road_x,min(player_x,road_x+road_width))
             player_progress+=player_speed
 
-            if level == 1 and random.randint(1,60)==1:
-                obstacles.append([random.randint(road_x,road_x+road_width-40),-50])
+            spawn_rate = 60 if level == 1 else 40
+            if random.randint(1, spawn_rate) == 1:
+                obstacles.append([random.randint(road_x, road_x+road_width-40), -50])
+
             for o in obstacles:
-                o[1]+=5
+                speed = 5 if level == 1 else 7
+                o[1] += speed
 
             player_rect=pygame.Rect(player_x-20,player_y-35,40,70)
 
@@ -245,7 +300,8 @@ while running:
 
             if player_progress >= race_distance:
                 if level == 1:
-                    reset_game(2)
+                    game_state = "transition"
+                    transition_start_time = pygame.time.get_ticks()
                 else:
                     game_over=True
                     winner="YOU WON THE GAME!"
